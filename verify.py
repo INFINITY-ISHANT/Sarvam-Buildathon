@@ -5,7 +5,7 @@ from rapidfuzz.fuzz import token_set_ratio
 
 def verify(claim, doc):
     fields = []
-    for field in ("amount", "date", "vendor", "invoice_number", "gst_amount", "gst_included"):
+    for field in ("amount", "date", "vendor", "invoice_number", "gst_amount", "gst_included", "payment_status"):
         claimed, found = claim.get(field), doc.get(field)
         if claimed is None:
             continue
@@ -35,8 +35,11 @@ def verify(claim, doc):
         elif field == "invoice_number":
             clean = lambda value: re.sub(r"[\s-]", "", str(value).upper())
             verdict = "MATCH" if clean(claimed) == clean(found) else "MISMATCH"
-        else:
+        elif field == "gst_included":
             verdict = "MATCH" if bool(claimed) == bool(found) else "MISMATCH"
+        else:
+            normalise_status = lambda value: str(value).strip().upper().replace(" ", "_").replace("-", "_")
+            verdict = "MATCH" if normalise_status(claimed) == normalise_status(found) else "MISMATCH"
         fields.append({"field": field, "claimed": claimed, "found": found, "verdict": verdict, "note": note})
 
     verdicts = [item["verdict"] for item in fields]

@@ -4,5 +4,6 @@
   "vendor": "Sharma Traders",
   "invoice_number": "INV-2041",
   "gst_amount": 686.44,
-  "gst_included": true
+  "gst_included": true,
+  "payment_status": "PAID"
 }

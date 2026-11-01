@@ -8,7 +8,8 @@ from sarvam_client import chat_json, read_document
 
 ROOT = Path(__file__).parent
 CACHE_DIR = Path("/tmp/sach-check-cache") if os.environ.get("VERCEL") else ROOT / ".cache"
-FIELDS = ["amount", "date", "vendor", "invoice_number", "gst_amount", "gst_included"]
+CACHE_VERSION = "v2"
+FIELDS = ["amount", "date", "vendor", "invoice_number", "gst_amount", "gst_included", "payment_status"]
 
 
 def _normalise(data):
@@ -29,14 +30,14 @@ def _normalise(data):
 def extract_document(image_path):
     image_hash = hashlib.sha256(Path(image_path).read_bytes()).hexdigest()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = CACHE_DIR / f"{image_hash}.json"
+    cache_path = CACHE_DIR / f"{image_hash}-{CACHE_VERSION}.json"
     if cache_path.exists():
         return json.loads(cache_path.read_text(encoding="utf-8"))
 
     try:
         text = read_document(image_path)
         result = chat_json(
-            "You extract fields from Indian invoices and receipts. Return ONLY JSON with keys: amount (total payable as a number in INR), date (ISO YYYY-MM-DD), vendor, invoice_number, gst_amount, gst_included (true when the payable grand total includes GST, including when the document labels the total 'GST Included'). Use null for anything not present. Do not guess.",
+            "You extract fields from Indian invoices and receipts. Return ONLY JSON with keys: amount (total payable as a number in INR), date (ISO YYYY-MM-DD), vendor, invoice_number, gst_amount, gst_included (true when the payable grand total includes GST, including when the document labels the total 'GST Included'), payment_status (PAID, UNPAID, PARTIALLY_PAID, or null if not stated). Use null for anything not present. Do not guess payment status from the presence of a total alone.",
             text,
         )
         result = _normalise(result)
@@ -44,6 +45,12 @@ def extract_document(image_path):
             result["gst_included"] = True
         elif re.search(r"\b(gst excluded|exclusive of gst|gst not included)\b", text, re.IGNORECASE):
             result["gst_included"] = False
+        status = re.search(r"\bpayment\s+status\s*[:\-]?\s*(paid|unpaid|pending|partially\s+paid)\b", text, re.IGNORECASE)
+        if status:
+            value = re.sub(r"\s+", "_", status.group(1)).upper()
+            result["payment_status"] = "UNPAID" if value == "PENDING" else value
+        elif re.search(r"\btotal\s+paid\b", text, re.IGNORECASE):
+            result["payment_status"] = "PAID"
     except Exception:
         sample_paths = (ROOT / "assets" / "invoice.png", ROOT / "assets" / "sample_invoice.jpg")
         if Path(image_path).resolve() not in {path.resolve() for path in sample_paths}:
