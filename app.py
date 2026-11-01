@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from pathlib import Path
 
@@ -24,15 +25,63 @@ def _stage(name, work):
 
 
 def _summary(result, transcript):
+    labels = {
+        "amount": "amount",
+        "date": "date",
+        "vendor": "vendor",
+        "invoice_number": "invoice number",
+        "gst_amount": "GST amount",
+        "gst_included": "whether GST is included",
+        "payment_status": "payment status",
+    }
+
+    def has_value(value):
+        return value is not None and str(value).strip().lower() not in {"", "null", "none", "unknown"}
+
+    comparisons = [
+        {
+            "field": labels.get(row["field"], "invoice detail"),
+            "claimed": row["claimed"],
+            "invoice": row["found"],
+            "matches": row["verdict"] == "MATCH",
+        }
+        for row in result["fields"]
+        if has_value(row.get("claimed")) and has_value(row.get("found"))
+    ]
+
+    def fallback():
+        status = next((row for row in result["fields"] if row["field"] == "payment_status"), None)
+        if status and has_value(status.get("found")):
+            invoice_status = str(status["found"]).replace("_", " ").lower()
+            if status["verdict"] == "MATCH":
+                return f"The invoice confirms the payment status is {invoice_status}."
+            claim_status = str(status["claimed"]).replace("_", " ").lower()
+            return f"The invoice says {invoice_status}, but the claim says {claim_status}."
+        if result["overall"] == "VERIFIED":
+            return "The claim matches the invoice."
+        if result["overall"] == "DISPUTED":
+            mismatches = [row for row in result["fields"] if row["verdict"] == "MISMATCH" and has_value(row.get("found"))]
+            if mismatches:
+                row = mismatches[0]
+                label = labels.get(row["field"], "invoice detail")
+                return f"The claimed {label} is {row['claimed']}; the invoice shows {row['found']}."
+        return "I couldn't confirm this claim from the invoice."
+
     try:
         data = chat_json(
-            "Write 1 to 3 short sentences in the language of the user's transcript. Name each mismatch plainly with both values. Keep numbers as digits. Return JSON with one key: spoken_summary.",
-            json.dumps({"transcript": transcript, "verification": result}, ensure_ascii=False),
+            "Write one brief, natural sentence for speech in the language of the user's transcript. Use only the supplied comparisons. "
+            "Never mention JSON, field names, underscores, null, none, unknown, or missing values. "
+            "Do not list technical details. If payment status matches, say plainly that the invoice confirms it. "
+            "If the comparisons list is empty, say you could not confirm the claim from the invoice. "
+            "Return JSON with one key: spoken_summary.",
+            json.dumps({"transcript": transcript, "overall": result["overall"], "comparisons": comparisons}, ensure_ascii=False),
         )
-        return str(data["spoken_summary"])
+        summary = str(data["spoken_summary"]).strip()
+        if not summary or re.search(r"payment[_\s-]*null|\bnull\b|\bnone\b|\bunknown\b|[_{}\[\]]", summary, re.IGNORECASE):
+            return fallback()
+        return summary
     except Exception:
-        mismatches = [f"{row['field']}: claimed {row['claimed']}, found {row['found']}" for row in result["fields"] if row["verdict"] != "MATCH"]
-        return "Claim checked. " + ("; ".join(mismatches) if mismatches else result["overall"].title() + ".")
+        return fallback()
 
 
 def run(image, audio, typed_claim):
