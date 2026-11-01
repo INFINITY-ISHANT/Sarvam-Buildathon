@@ -95,6 +95,8 @@ The Sarvam client reads `SARVAM_API_KEY` from the process environment, with `.en
 
 ## Deploy on Vercel
 
+Live deployment: [Sach Check](https://sarvambuildathon-72nvxm5wy-ishants-projects-2a09f545.vercel.app/)
+
 The repository includes `index.py` as the Python app entry point. When importing the repository into Vercel, configure `SARVAM_API_KEY` in the project's environment variables for the environments where the app will run. Do not commit `.env` or the API key. The deployed app needs network access to Sarvam APIs; deployment behavior should be checked in Vercel's build and function logs.
 
 ## Troubleshooting
