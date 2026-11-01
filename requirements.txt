@@ -1,0 +1,7 @@
+gradio
+sarvamai
+rapidfuzz
+python-dateutil<3
+pillow
+python-dotenv
+requests

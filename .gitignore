@@ -1,0 +1,6 @@
+.env
+.cache/
+__pycache__/
+*.py[cod]
+.vercel/
+/assets/invoice.png
